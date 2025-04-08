@@ -5,10 +5,10 @@ get_abs_filename() {
 }
 
 echo "copying ofRecurBoy files from openframeworks folder"
-cp -r ../openframeworks10.1/apps/myApps/ofRecurBoy software/
+cp -r ~/openframeworks10.1/apps/myApps/ofRecurBoy .
 echo "pulling ofxVideoArtTools addon:"
-git -C $(get_abs_filename "../openframeworks10.1/addons/ofxVideoArtTools") pull
+git -C /home/pi/openframeworks10.1/addons/ofxVideoArtTools pull
 echo "pulling RecurBoy repo:"
-git pull
+git -C /home/pi/recurBOY pull
 echo "copying ofRecurBoy files to openframeworks folder"
-cp -r software/ofRecurBoy/ ../openframeworks10.1/apps/myApps/
+cp -r ~/recurBOY/software/ofRecurBoy/ ~/openframeworks10.1/apps/myApps/
