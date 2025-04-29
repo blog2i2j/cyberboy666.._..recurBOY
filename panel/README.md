@@ -40,8 +40,8 @@ things like screws and standoffs can be sourced from lots of places. i will link
 
 item | source
 --- | ---
-Front panel | _default_panel_ file
-Back panel | _back_panel_ file
+Front panel | [recurBOY_default_panel_v0_7_1_mk_iii.zip](https://github.com/cyberboy666/recurBOY/blob/main/panel/default_panel/recurBOY_default_panel_v0_7_1_mk_iii.zip)
+Back panel | [back_panel.zip](https://github.com/cyberboy666/recurBOY/blob/main/panel/back_panel/back_panel.zip)
 rubber feet x4 | [aliexpress](https://www.aliexpress.com/item/1005005287385986.html?pdp_ext_f=%7B%22sku_id%22:%2212000032498489269%22%7D)
 pot cap x4 | 3d printed from [stl file](https://github.com/cyberboy666/enclosure_kit_commons/blob/main/cap_pot_6mm_shaft/cap_pot_star_single_r2.8.stl)
 M3-35mm screw x4 | [aliexpress](https://www.aliexpress.com/item/1005002364189187.html?pdp_ext_f=%7B%22sku_id%22:%2212000020354274909%22%7D)
@@ -53,10 +53,23 @@ m3-18mm standoff x4 (back) | [aliexpresss](https://www.aliexpress.com/item/10050
 
 item | source
 --- | ---
-Eurorack front panel | _eurorack_panel_ file
+Eurorack front panel | [recurBOY_default_panel_v0_7_1_mk_iii.zip](https://github.com/cyberboy666/recurBOY/blob/v3.0.0s/panel/eurorack_panel/recurBOY_default_panel_v0_7_1_mk_iii.zip) gerber
 Eurorack 16pin power header | [tayda](https://www.taydaelectronics.com/16-pin-box-header-connector-2-54mm.html)
 Pot cap x4 | 3d printed from [stl file](https://github.com/cyberboy666/enclosure_kit_commons/blob/main/cap_pot_6mm_shaft/cap_pot_star_single_r2.8.stl)
 M3-25mm screw x4 | [aliexpress](https://www.aliexpress.com/item/1005002364189187.html?pdp_ext_f=%7B%22sku_id%22:%2212000020354274907%22%7D)
+
+## enclosure assembling
+
+these enclosures are assemlbed by creating a stack of front-panel -> circuit -> back-panel using the screws and standoffs. where the front standoffs go between front panel and pcb and back standoff go between back panel and pcb. the m3 hex holds it together from the bottom.
+
+i find it easiest to hold circuit on its side and work around one screw at a time:
+
+- first place the front standoff between front panel and pcb
+- then put the screw through holding them together
+- next place back standoff on screw followed by back panel and hex
+- then repeat for other 3 corners
+
+tweezers can be helpful to pick and place the standoffs and also to tighten the m3 hexs
 M3 nut x4 | [aliexpress](https://www.aliexpress.com/item/1005007502691265.html?pdp_ext_f=%7B"sku_id":"12000041089836836"%7D)
 m3-10mm standoff x4 (front) | [aliexpress](https://www.aliexpress.com/item/1005003086579258.html?pdp_ext_f=%7B"sku_id":"12000023995222161"%7D)
 m3-8mm screw x4 | [aliexpress](https://www.aliexpress.com/item/1005002364189187.html?pdp_ext_f=%7B%22sku_id%22:%2212000020354274900%22%7D)
