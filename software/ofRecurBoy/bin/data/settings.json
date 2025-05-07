@@ -6,7 +6,7 @@
    "CV_UPPER" : "1V",
    "DEV_MODE" : false,
    "FRAMERATE" : 30,
-   "HDMI_TYPE" : "720P",
+   "HDMI_TYPE" : "480P",
    "IMAGE_RATIO" : "ORIGINAL",
    "PIXEL_OFFSET" : false,
    "SHOW_FPS" : false,

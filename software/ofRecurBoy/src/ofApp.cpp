@@ -29,6 +29,7 @@ void ofApp::setup(){
     userInput.midiListening(true);
     userInput.adcDelay = setting.adcSecDelay;
     userInput.adcGrain = setting.adcGrain;
+    userInput.connectKeyboard(0);
 
     sender.setup("localhost", 9000);
 
@@ -174,7 +175,7 @@ ofApp::pageObject& ofApp::getPagebyName(string pageName){
 }
 
 void ofApp::readActions(){
-
+    userInput.readKey();
     vector<vector<string>> actionsList = userInput.getActions();
     for( int i = 0; i < actionsList.size(); i++){
         ofLog() << "action is " << actionsList[i][0] << "value is " << actionsList[i][1];
@@ -192,15 +193,16 @@ void ofApp::readActions(){
 
 //--------------------------------------------------------------
 // a work around for now (would rather be hooking keypress from within incur buit seemd harder)
-// void ofApp::keyPressed  (int key){
-//     ofLog() << "isLiveText: " << isLiveText;
-//     if(isLiveText){
-//         liveTextKey(key);
-//     }
-//     else{
-// //        userInput.onKeyPress(key);
-//     }
-// }
+/* void ofApp::keyPressed  (int key){
+     ofLog() << "isLiveText: " << isLiveText;
+     if(isLiveText){
+         liveTextKey(key);
+     }
+     else{
+         userInput.onKeyPress(key);
+     }
+ }
+*/
 // also here was hoping to have a map of pointers to the function , but also seemd more tricky than it needs to be
 void ofApp::runAction(string action, string amount){
      if(action == "exit"){ exit();}
@@ -562,6 +564,8 @@ void ofApp::switchSource(){
     sendStringMessage("/CURRENT_PAGE", currentPage);
     // check again if any midi devices are attached
     userInput.midiListening(true);
+    // check if a keyboard is plugged in
+    userInput.connectKeyboard(0);
     // check if external source is detected
 
     if(isCameraDetected && !detectCamera()){
@@ -653,6 +657,7 @@ void ofApp::sendStringMessage(string address, string value){
 }
 
 void ofApp::playVideo(string path){
+    fbo.allocate(ofGetScreenWidth(), ofGetScreenHeight(), GL_RGB);
     recurPlayer.startSingle(path);
 }
 
