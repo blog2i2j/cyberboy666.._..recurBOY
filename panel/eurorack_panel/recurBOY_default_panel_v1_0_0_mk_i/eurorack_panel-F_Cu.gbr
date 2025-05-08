@@ -1,12 +1,12 @@
-%TF.GenerationSoftware,KiCad,Pcbnew,7.0.9*%
-%TF.CreationDate,2024-08-29T12:31:07+10:00*%
+%TF.GenerationSoftware,KiCad,Pcbnew,8.0.5*%
+%TF.CreationDate,2025-04-09T14:44:18+10:00*%
 %TF.ProjectId,eurorack_panel,6575726f-7261-4636-9b5f-70616e656c2e,rev?*%
 %TF.SameCoordinates,Original*%
 %TF.FileFunction,Copper,L1,Top*%
 %TF.FilePolarity,Positive*%
 %FSLAX46Y46*%
 G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
-G04 Created by KiCad (PCBNEW 7.0.9) date 2024-08-29 12:31:07*
+G04 Created by KiCad (PCBNEW 8.0.5) date 2025-04-09 14:44:18*
 %MOMM*%
 %LPD*%
 G01*
