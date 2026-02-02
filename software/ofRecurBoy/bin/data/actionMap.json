@@ -11,16 +11,25 @@
         ["41", "playSwitch"],
         ["59", "moveRight"],
         ["42", "enter"],
-        ["45", "switchInput"],
+        ["45", "switchSource"],
         ["46", "fxSwitch"],
         ["0", "setShaderParam0"],
         ["1", "setShaderParam1"],
         ["2", "setShaderParam2"],
         ["3", "setShaderSpeed"],
+        ["4", "setTextDisplaceX"],
+        ["5", "setTextDisplaceY"],
+        ["6", "setTextDisplaceWidth"],
+        ["7", "setTextDisplaceHeight"],
         ["16", "setEffectParam0"],
         ["17", "setEffectParam1"],
         ["18", "setEffectParam2"],
-        ["19", "setEffectSpeed"]
+        ["19", "setEffectSpeed"],
+        ["20", "setTextColorHue"],
+        ["21", "setTextColorSat"],
+        ["22", "setTextColorBrightness"],
+        ["23", "setTextColorAlpha"]
+
 
 
 
@@ -37,10 +46,10 @@
         ["1", "setParam1Cv"],
         ["2", "setParam2Cv"],
         ["3", "setSpeedCv"],
-	    ["4", "setParam0"],
-        ["5", "setParam1"],
-        ["6", "setParam2"],
-        ["7", "setSpeed"]
+	    ["4", "setParam0Invert"],
+        ["5", "setParam1Invert"],
+        ["6", "setParam2Invert"],
+        ["7", "setSpeedInvert"]
     ],
     "GPIO" : [
         ["18", "moveUp"],
@@ -49,7 +58,7 @@
         ["7", "playSwitch"],
         ["22", "moveRight"],
         ["12", "enter"],
-        ["19", "switchInput"],
+        ["19", "switchSource"],
         ["13", "fxSwitch"]
     ],
     "KEY" : [
@@ -61,9 +70,10 @@
         ["p", "enter" ],
         ["f", "fxSwitch" ],
         ["r", "playSwitch"],
-        ["c", "switchInput" ],
-        ["1", "stepShaderParam0"],
-        ["2", "stepShaderParam1"],
-        ["3", "stepShaderParam2"]
+        ["c", "switchSource" ],
+        ["1", "stepParam0"],
+        ["2", "stepParam1"],
+        ["3", "stepParam2"],
+        ["4", "stepSpeed"]
     ]
 }

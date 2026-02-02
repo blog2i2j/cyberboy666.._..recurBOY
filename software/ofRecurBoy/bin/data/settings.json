@@ -1,7 +1,16 @@
 {
-    "CLIP_ON_1V": false,
-    "ADC_SEC_DELAY": 0.03,
-    "DEV_MODE": false,
-    "SHOW_FRAMERATE": false,
-    "FRAMERATE": 30
+   "ADC_GRAIN" : 10,
+   "ADC_SEC_DELAY" : 0,
+   "CVBS_TYPE" : "PAL",
+   "CV_BUTTON" : false,
+   "CV_UPPER" : "1V",
+   "DEV_MODE" : false,
+   "FRAMERATE" : 30,
+   "HDMI_TYPE" : "480P",
+   "IMAGE_RATIO" : "ORIGINAL",
+   "PIXEL_OFFSET" : false,
+   "SHOW_FPS" : false,
+   "TEXT_ENABLE" : true,
+   "VIDEO_MODE" : "CVBS"
 }
+

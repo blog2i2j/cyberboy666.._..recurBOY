@@ -6,10 +6,11 @@ void ofApp::setup(){
     ofBackground(0, 0, 0);
     ofSetVerticalSync(false);
     ofHideCursor();
-    readSettings();
-    ofSetFrameRate(appFramerate);
+    setting.loadJson();
+    ofSetFrameRate(setting.framerate);
+    readVideoMode();
 
-    if(isDev){
+    if(setting.devMode){
         ofSetFullscreen(0);
         ofSetWindowShape(300,200);
         ofSetWindowPosition(50,500);
@@ -26,39 +27,49 @@ void ofApp::setup(){
     userInput.setupThis("actionMap.json");
     userInput.analogListening();
     userInput.midiListening(true);
-    userInput.adcDelay = adcDelay;
+    userInput.adcDelay = setting.adcSecDelay;
+    userInput.adcGrain = setting.adcGrain;
+    userInput.connectKeyboard(0);
 
     sender.setup("localhost", 9000);
 
-    sampleList = getPathFromInternalAndExternal("SAMPLER"); //getPathsInFolder("/home/pi/Videos/", "video");
-    sendListMessage("/sampleList", sampleList);
-    shaderList = getPathFromInternalAndExternal("SHADERS"); // getPathsInFolder("/home/pi/Shaders/", "shader");
-    sendListMessage("/shaderList", shaderList);
-    fxList = getPathFromInternalAndExternal("FX"); //getPathsInFolder("/home/pi/Fx/", "shader");
-    sendListMessage("/fxList", fxList);
+    videoPage.name = "VIDEO";
+    patternPage.name = "PATTERN";
+    externalPage.name = "EXTERNAL";
+    effectPage.name = "EFFECT";
+    textPage.name = "TEXT";
+    fontPage.name = "FONT";
+    settingPage.name = "SETTING";
+    messagePage.name = "MESSAGE";
+
+    videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
+    sendMenuList("/LIST/VIDEO", videoPage.menuList);
+    patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
+    sendMenuList("/LIST/PATTERN", patternPage.menuList);
+    effectPage.menuList = getPathsForMenu(effectPage);
+    sendMenuList("/LIST/EFFECT", effectPage.menuList);
+    textPage.menuList = getPathsForMenu(textPage);
+    sendMenuList("/LIST/TEXT", textPage.menuList);
+    fontPage.menuList = getPathsForMenu(fontPage);
+    sendMenuList("/LIST/FONT", fontPage.menuList);
+    settingPage.menuList = setting.generateMenuList();
+    sendMenuList("/LIST/SETTING", settingPage.menuList);
     
-    inputModes = {"SAMPLER", "SHADERS"};
-    inputIndex = 0;
-    currentList = sampleList;
-    fxScreenVisible = false;
-    fxOn = false;
-    playOn = false;
+    sourceModes = {"VIDEO", "PATTERN"};
+    currentSourceIndex = 0;
+
     isCameraDetected = detectCamera();
-    if(isCameraDetected){inputModes.push_back("CAMERA");}
-    cameraList = {"preview"};
-    sendListMessage("/cameraList", cameraList);
-    isCameraOn = false;
+    if(isCameraDetected){sourceModes.push_back("EXTERNAL");}
+    externalPage.menuList = {"start", "stop"};
+    sendMenuList("/LIST/EXTERNAL", externalPage.menuList);
     isCameraRecording = false;
+
+    thisTextObject = textObject();
+    thisTextObject.loadFont("arial.tff");
     
-    selectedRow = 0;
-    selectedFxRow = 0;
 
-    playingSampleRow = -1;
-    playingShaderRow = -1;
-    playingFxRow = -1;
-
-    selectedInputMode = inputModes[0];
-    playingMode = "SAMPLER";
+    runningSource = sourceModes[0];
+    currentPage = runningSource;
     isSampleImage = true;
     img.load("/home/pi/openframeworks10.1/apps/myApps/ofRecurBoy/splash.gif");
     
@@ -76,60 +87,105 @@ void ofApp::setup(){
 void ofApp::update(){
     readActions();
 
-    if(playingMode == "SAMPLER" && playOn && !isSampleImage){
+    if(runningSource == "VIDEO" && videoPage.isPlaying && !isSampleImage){
         recurPlayer.update();
         fbo.begin();
             recurPlayer.playerDraw();
         fbo.end();
     }
-    if(playingMode == "SAMPLER" && isSampleImage){
+    if(runningSource == "VIDEO" && isSampleImage){
         fbo.begin();
-            img.draw(0,0, ofGetWidth(), ofGetHeight());
+            drawImage();
         fbo.end();
     }
-    else if(playingMode == "SHADERS" && playOn){
+    else if(runningSource == "PATTERN" && patternPage.isPlaying){
         fbo = shaderPlayer.apply({});
     }
-    else if(playingMode == "CAMERA" && videoInput.isReady() && playOn){
+    else if(runningSource == "EXTERNAL" && videoInput.isReady() && externalPage.isPlaying){
         videoInput.update();
         fbo.begin();
             videoInput.draw(0,0, ofGetWidth(), ofGetHeight());
         fbo.end();
     }
-    if(fxOn){
+    if(effectPage.isPlaying){
     fxFbo = fxPlayer.apply({fbo.getTexture(), fxFbo.getTexture()});
     }
 
-    if(isCameraRecording){ checkRecording();}
+   // if(isCameraRecording){ checkRecording();}
 }
 
 //--------------------------------------------------------------
 void ofApp::draw(){
-    if(fxOn){
+    if(effectPage.isPlaying){
         fxFbo.draw(0,0, ofGetWidth(), ofGetHeight());
     }
     else{
         fbo.draw(0,0, ofGetWidth(), ofGetHeight());
     }
 
-    if(showFramerate){printFramerate();}
-}
-
-void ofApp::readSettings(){
-    bool parsingSuccessful = settings.open("settings.json");
-    clip1v = settings["CLIP_ON_1V"].asBool();
-    adcDelay = settings["ADC_SEC_DELAY"].asFloat();
-    isDev = settings["DEV_MODE"].asBool();
-    appFramerate = settings["FRAMERATE"].asInt();
-    showFramerate = settings["SHOW_FRAMERATE"].asBool();
+    if(textPage.isPlaying){
+        thisTextObject.draw();
+        // thisTextObject.myFont.drawString(thisTextObject.text, 100, 100);
     }
 
-void ofApp::readActions(){
+    if(setting.showFps){printFramerate();}
+}
 
+void ofApp::drawImage(){
+    if(setting.imageRatio == "STRETCH"){
+        // Stretch image across screen
+        img.draw(0,0, ofGetWidth(), ofGetHeight());
+        return;
+    }
+
+    float imgAspect = img.getWidth() / img.getHeight();
+    float screenAspect = ofGetWidth() / (float)ofGetHeight();
+
+    float drawWidth, drawHeight;
+    float offsetX = 0, offsetY = 0;
+
+    if (imgAspect > screenAspect) {
+        // Image is wider than screen, fit by width
+        drawWidth = ofGetWidth();
+        drawHeight = drawWidth / imgAspect;
+        offsetY = (ofGetHeight() - drawHeight) / 2; // Center vertically
+    } else {
+        // Image is taller than screen, fit by height
+        drawHeight = ofGetHeight();
+        drawWidth = drawHeight * imgAspect;
+        offsetX = (ofGetWidth() - drawWidth) / 2; // Center horizontally
+    }
+
+    // Draw image with calculated size and position
+    ofBackground(0);
+    img.draw(offsetX, offsetY, drawWidth, drawHeight);
+
+}
+
+ofApp::pageObject& ofApp::getPagebyName(string pageName){
+    if(pageName == "VIDEO"){ return videoPage;}
+    else if(pageName == "PATTERN"){ return patternPage;}
+    else if(pageName == "EXTERNAL"){ return externalPage;}
+    else if(pageName == "EFFECT"){ return effectPage;}
+    else if(pageName == "TEXT"){ return textPage;}
+    else if(pageName == "FONT"){ return fontPage;}
+    else if(pageName == "SETTING"){ return settingPage;}
+    else if(pageName == "MESSAGE"){ return messagePage;}
+    else{return videoPage;}
+}
+
+void ofApp::readActions(){
+    userInput.readKey();
     vector<vector<string>> actionsList = userInput.getActions();
     for( int i = 0; i < actionsList.size(); i++){
         ofLog() << "action is " << actionsList[i][0] << "value is " << actionsList[i][1];
         runAction(actionsList[i][0], actionsList[i][1]);
+    }
+    if(isLiveText){
+        vector<int> keyPress = userInput.getKeyPassthrough();
+        for( int i = 0; i < keyPress.size(); i++){
+            liveTextKey(keyPress[i]);
+        }
     }
 
 }
@@ -137,9 +193,16 @@ void ofApp::readActions(){
 
 //--------------------------------------------------------------
 // a work around for now (would rather be hooking keypress from within incur buit seemd harder)
-void ofApp::keyPressed  (int key){
-    userInput.onKeyPress(key);
-}
+/* void ofApp::keyPressed  (int key){
+     ofLog() << "isLiveText: " << isLiveText;
+     if(isLiveText){
+         liveTextKey(key);
+     }
+     else{
+         userInput.onKeyPress(key);
+     }
+ }
+*/
 // also here was hoping to have a map of pointers to the function , but also seemd more tricky than it needs to be
 void ofApp::runAction(string action, string amount){
      if(action == "exit"){ exit();}
@@ -151,14 +214,19 @@ void ofApp::runAction(string action, string amount){
      else if(action == "enter"){ enter();}
      else if(action == "fxSwitch"){ fxSwitch();}
      else if(action == "playSwitch"){ playSwitch();}
-     else if(action == "switchInput"){ switchInput();}
+     else if(action == "switchSource"){ switchSource();}
      else if(action == "stepParam0"){ stepParam0();}
      else if(action == "stepParam1"){ stepParam1();}
      else if(action == "stepParam2"){ stepParam2();}
+     else if(action == "stepSpeed"){ stepSpeed();}
      else if(action == "setParam0"){ setParam0(ofToFloat(amount));}
      else if(action == "setParam1"){ setParam1(ofToFloat(amount));}
      else if(action == "setParam2"){ setParam2(ofToFloat(amount));}
      else if(action == "setSpeed"){ setSpeed(ofToFloat(amount));}
+     else if(action == "setParam0Invert"){ setParam0Invert(ofToFloat(amount));}
+     else if(action == "setParam1Invert"){ setParam1Invert(ofToFloat(amount));}
+     else if(action == "setParam2Invert"){ setParam2Invert(ofToFloat(amount));}
+     else if(action == "setSpeedInvert"){ setSpeedInvert(ofToFloat(amount));}
      else if(action == "setShaderParam0"){ setShaderParam0(ofToFloat(amount));}
      else if(action == "setShaderParam1"){ setShaderParam1(ofToFloat(amount));}
      else if(action == "setShaderParam2"){ setShaderParam2(ofToFloat(amount));}
@@ -171,6 +239,17 @@ void ofApp::runAction(string action, string amount){
      else if(action == "setParam1Cv"){ setParam1Cv(ofToFloat(amount));}
      else if(action == "setParam2Cv"){ setParam2Cv(ofToFloat(amount));}
      else if(action == "setSpeedCv"){ setSpeedCv(ofToFloat(amount));}
+     else if(action == "setTextDisplaceX"){ setTextDisplaceX(ofToFloat(amount));}
+     else if(action == "setTextDisplaceY"){ setTextDisplaceY(ofToFloat(amount));}
+     else if(action == "setTextDisplaceWidth"){ setTextDisplaceWidth(ofToFloat(amount));}
+     else if(action == "setTextDisplaceHeight"){ setTextDisplaceHeight(ofToFloat(amount));}
+     else if(action == "setTextColorHue"){ setTextColorHue(ofToFloat(amount));}
+     else if(action == "setTextColorSat"){ setTextColorSat(ofToFloat(amount));}
+     else if(action == "setTextColorBrightness"){ setTextColorBrightness(ofToFloat(amount));}
+     else if(action == "setTextColorAlpha"){ setTextColorAlpha(ofToFloat(amount));}
+
+
+
  }
 
 void ofApp::exit(){
@@ -179,55 +258,73 @@ void ofApp::exit(){
  }
 
 void ofApp::moveUp(){
-    if(fxScreenVisible){
-        if (selectedFxRow > 0){ selectedFxRow--;}
-        sendIntMessage("/selectedFxRow", selectedFxRow);
-    }
-    else{
-        if (selectedRow > 0){ selectedRow--;}
-        sendIntMessage("/selectedRow", selectedRow);
-    }
+    pageObject& currentPageObject = getPagebyName(currentPage);
+    if(currentPageObject.selectedRow > 0){currentPageObject.selectedRow--;}
+    else{currentPageObject.selectedRow = currentPageObject.menuList.size() - 1;}
+    sendIntMessage("/SELECTED_ROW/" + currentPage, currentPageObject.selectedRow);
 }
 
 void ofApp::moveDown(){
-    if(fxScreenVisible){
-        if (selectedFxRow < fxList.size() - 1){ selectedFxRow++;}
-        sendIntMessage("/selectedFxRow", selectedFxRow);
-    }
-    else{
-        if (selectedRow < currentList.size() - 1){ selectedRow++;}
-        sendIntMessage("/selectedRow", selectedRow);
-    }
+    pageObject&  currentPageObject = getPagebyName(currentPage);
+    if(currentPageObject.selectedRow < currentPageObject.menuList.size() - 1){currentPageObject.selectedRow++;}
+    else{currentPageObject.selectedRow = 0;}
+    sendIntMessage("/SELECTED_ROW/" + currentPage, currentPageObject.selectedRow);
 }
 
 void ofApp::moveLeft(){
-    if(fxScreenVisible){
-        fxScreenVisible = false;
-        sendIntMessage("/fxScreenVisible", 0);
+    if(currentPage == "FONT"){
+        currentPage = "TEXT";
     }
+    else if(currentPage == "TEXT"){
+        currentPage = "EFFECT";
+    }
+    if(currentPage == "EFFECT"){
+        currentPage = runningSource;
+    }
+    else if(currentPage == "VIDEO" || currentPage == "PATTERN" || currentPage == "EXTERNAL"){
+        currentPage = "SETTING";
+    }
+    sendStringMessage("/CURRENT_PAGE", currentPage);
 }
 
 void ofApp::moveRight(){
     ofLog() << "move right! ";
-    if(!fxScreenVisible){
-        fxScreenVisible = true;
-        sendIntMessage("/fxScreenVisible", 1);
+    if(currentPage == "SETTING"){
+        currentPage = runningSource;
     }
+    else if(currentPage == "VIDEO" || currentPage == "PATTERN" || currentPage == "EXTERNAL"){
+        currentPage = "EFFECT";
+    }
+    else if(currentPage == "EFFECT" && setting.textEnable){
+        currentPage = "TEXT";
+    }
+    else if(currentPage == "TEXT"){
+        currentPage = "FONT";
+    }
+    sendStringMessage("/CURRENT_PAGE", currentPage);
 }
 
 void ofApp::fxSwitch(){
-    fxOn = !fxOn;
-    int fxOnInt = fxOn;
-    sendIntMessage("/fxOn",fxOnInt);
+    if(currentPage == "TEXT" || currentPage == "FONT"){
+        textPage.isPlaying = !textPage.isPlaying;
+        fontPage.isPlaying = textPage.isPlaying;
+        sendBoolMessage("/PLAYING/TEXT",textPage.isPlaying);
+        sendBoolMessage("/PLAYING/FONT",fontPage.isPlaying);
+    }
+    else{
+        effectPage.isPlaying = !effectPage.isPlaying;
+        sendBoolMessage("/PLAYING/EFFECT",effectPage.isPlaying);
+    }
+
 }
 
 void ofApp::playSwitch(){
     checkSafeShutdown();
-    playOn = !playOn;
-    int playOnInt = playOn;
-    if(playingMode == "SAMPLER"){ recurPlayer.setPlay(playOn);}
-    else if(playingMode == "SHADERS"){ shaderPlayer.setPlay(playOn); }
-    sendIntMessage("/playOn", playOnInt);
+    pageObject& runningSourcePage = getPagebyName(runningSource);
+    runningSourcePage.isPlaying = !runningSourcePage.isPlaying;
+    if(runningSource == "VIDEO"){recurPlayer.setPlay(runningSourcePage.isPlaying);}
+    else if(runningSource == "PATTERN"){ shaderPlayer.setPlay(runningSourcePage.isPlaying); }
+    sendIntMessage("/PLAYING/" + runningSource, runningSourcePage.isPlaying);
 }
 
 void ofApp::stepParam0(){
@@ -249,185 +346,306 @@ void ofApp::stepParam2(){
     float amountToSet = (float)stepParam2Value/10.0;
     ofLog() << "amount is " << ofToString(amountToSet);
     setParam2(amountToSet);
+}
+
+void ofApp::stepSpeed(){
+    stepSpeedValue = (stepSpeedValue + 1) % 10;
+    float amountToSet = (float)stepSpeedValue/10.0;
+    ofLog() << "amount is " << ofToString(amountToSet);
+    setSpeed(amountToSet);
 } 
+ 
 
 void ofApp::setParam0(float value){
-    if(selectedInputMode == "SHADERS" && !fxScreenVisible ){
-        setShaderParam0(value);
-    }
-    else{
-        setEffectParam0(value); 
-    }
+    if(currentPage == "TEXT"){setTextDisplaceX(value);}
+    else if(currentPage == "FONT"){setTextColorHue(value);}
+    else if(currentPage == "PATTERN" ){setShaderParam0(value);}
+    else{setEffectParam0(value);}
 }
 
 void ofApp::setParam1(float value){
-    if(selectedInputMode == "SHADERS" && !fxScreenVisible ){
-        setShaderParam1(value);
-    }
-    else{
-        setEffectParam1(value); 
-    }
-
+    if(currentPage == "TEXT"){setTextDisplaceY(value);}
+    else if(currentPage == "FONT"){setTextColorSat(value);}
+    else if(currentPage == "PATTERN" ){setShaderParam1(value);}
+    else{setEffectParam1(value);}
 }
 
 void ofApp::setParam2(float value){
-    if(selectedInputMode == "SHADERS" && !fxScreenVisible ){
-        setShaderParam2(value);
-    }
-    else{
-        setEffectParam2(value); 
-    }
-
+    if(currentPage == "TEXT"){setTextDisplaceWidth(value);}
+    else if(currentPage == "FONT"){setTextColorBrightness(value);}
+    else if(currentPage == "PATTERN" ){setShaderParam2(value);}
+    else{setEffectParam2(value);}
 }
 
 void ofApp::setSpeed(float value){
-    if(selectedInputMode == "SHADERS" && !fxScreenVisible ){
-        setShaderSpeed(value); 
-    }
-    else{
-        setEffectSpeed(value);
-    }
+    if(currentPage == "TEXT"){setTextDisplaceHeight(value);}
+    else if(currentPage == "FONT"){setTextColorAlpha(value);}
+    else if(currentPage == "PATTERN" ){setShaderSpeed(value);}
+    else{setEffectSpeed(value);}
 }
 
-void ofApp::setShaderParam0(float value){shaderPlayer.shaderParams[0] = value;}
-void ofApp::setShaderParam1(float value){shaderPlayer.shaderParams[1] = value;}
-void ofApp::setShaderParam2(float value){shaderPlayer.shaderParams[2] = value;}
-void ofApp::setShaderSpeed(float value){shaderPlayer.setSpeed(value);}
+void ofApp::setParam0Invert(float value){setParam0(1.0 - value);}
+void ofApp::setParam1Invert(float value){setParam1(1.0 - value);}
+void ofApp::setParam2Invert(float value){setParam2(1.0 - value);}
+void ofApp::setSpeedInvert(float value){setSpeed(1.0 - value);}
 
-void ofApp::setEffectParam0(float value){fxPlayer.shaderParams[0] = value;}
-void ofApp::setEffectParam1(float value){fxPlayer.shaderParams[1] = value;}
-void ofApp::setEffectParam2(float value){fxPlayer.shaderParams[2] = value;}
-void ofApp::setEffectSpeed(float value){fxPlayer.setSpeed(value);}
+void ofApp::setShaderParam0(float value){shaderPlayer.shaderParams[0] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setShaderParam1(float value){shaderPlayer.shaderParams[1] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setShaderParam2(float value){shaderPlayer.shaderParams[2] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setShaderSpeed(float value){shaderPlayer.setSpeed(ofClamp(value, 0.0, 1.0));}
 
+void ofApp::setEffectParam0(float value){fxPlayer.shaderParams[0] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setEffectParam1(float value){fxPlayer.shaderParams[1] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setEffectParam2(float value){fxPlayer.shaderParams[2] = ofClamp(value, 0.0, 1.0);}
+void ofApp::setEffectSpeed(float value){fxPlayer.setSpeed(ofClamp(value, 0.0, 1.0));}
+
+void ofApp::setTextDisplaceX(float value){thisTextObject.x = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextDisplaceY(float value){thisTextObject.y = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextDisplaceWidth(float value){thisTextObject.width = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextDisplaceHeight(float value){thisTextObject.height = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextColorHue(float value){thisTextObject.hue = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextColorSat(float value){thisTextObject.sat = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextColorBrightness(float value){thisTextObject.brightness = ofClamp(value, 0.0, 1.0);}
+void ofApp::setTextColorAlpha(float value){thisTextObject.alpha = ofClamp(value, 0.0, 1.0);}
 
 void ofApp::setParam0Cv(float value){
-    if(clip1v){value = value * 5.0;}
+    if(setting.cvButton){
+        if(lastCv0Value < 0.5 && value > 0.5){
+        playSwitch();
+        }
+        lastCv0Value = value;
+        return;
+    }
+    if(setting.cvUpper == "1V"){value = value * 5.0;}
     setParam0(value);
 }
 
 void ofApp::setParam1Cv(float value){ 
-    if(clip1v){value = value * 5.0;}
+    if(setting.cvButton && lastCv1Value < 0.5 && value > 0.5){
+        lastCv1Value = value;
+        fxSwitch();
+        return;
+    }
+    if(setting.cvUpper == "1V"){value = value * 5.0;}
     setParam1(value);
 }
 
 void ofApp::setParam2Cv(float value){ 
-    if(clip1v){value = value * 5.0;}
+    if(setting.cvButton && lastCv2Value < 0.5 && value > 0.5){
+        lastCv2Value = value;
+        moveDown();
+        return;
+    }
+    if(setting.cvUpper == "1V"){value = value * 5.0;}
     setParam2(value);
 }
 
 void ofApp::setSpeedCv(float value){ 
-    if(clip1v){value = value * 5.0;}
+    if(setting.cvButton && lastCv3Value < 0.5 && value > 0.5){
+        lastCv3Value = value;
+        enter();
+        return;
+    }
+    if(setting.cvUpper == "1V"){value = value * 5.0;}
     setSpeed(value);
 }
 
 void ofApp::enter(){
     closeUnusedInput();
-    if(fxScreenVisible){
-        fxPlayer.loadShaderFiles("default.vert", fxList[selectedFxRow]);        
-        playingFxRow = selectedFxRow;
-        sendIntMessage("/playingFxRow", playingFxRow);
-        fxOn = true;   
-        sendIntMessage("/fxOn",1);
+    pageObject& currentPageObject = getPagebyName(currentPage);
+
+    currentPageObject.playingRow = currentPageObject.selectedRow;     
+    sendIntMessage("/PLAYING_ROW/" + currentPage, currentPageObject.playingRow);
+    currentPageObject.isPlaying = true;
+    sendBoolMessage("/PLAYING/" + currentPage,true);
+
+    string menu_item = currentPageObject.menuList[currentPageObject.selectedRow];
+    ofLog() << "menu_item: " << menu_item;
+
+    if(endsWith(menu_item, '|')){
+        // going into a folder
+        menu_item.pop_back();
+        currentPageObject.currentFolder = menu_item;
+        currentPageObject.menuList = getPathsForMenu(currentPageObject);
+        currentPageObject.playingRow = -1;
+        currentPageObject.selectedRow = 0;
+        sendMenuList("/LIST/" + currentPage, currentPageObject.menuList);
+        sendIntMessage("/PLAYING_ROW/" + currentPage, currentPageObject.playingRow);
+        sendIntMessage("/SELECTED_ROW/" + currentPage, currentPageObject.selectedRow);
+    }
+    else if(endsWith(menu_item, '^')){
+        // going out of folder
+        menu_item.pop_back();
+        currentPageObject.currentFolder = moveFolderUpOneLevel(currentPageObject.currentFolder);
+        currentPageObject.menuList = getPathsForMenu(currentPageObject);
+        currentPageObject.playingRow = -1;
+        currentPageObject.selectedRow = 0;
+        sendMenuList("/LIST/" + currentPage, currentPageObject.menuList);
+        sendIntMessage("/PLAYING_ROW/" + currentPage, currentPageObject.playingRow);
+        sendIntMessage("/SELECTED_ROW/" + currentPage, currentPageObject.selectedRow);
+    }
+    else if(currentPage == "EFFECT"){
+        fxPlayer.loadShaderFiles("default.vert", menu_item);   
     } 
-    else if(selectedInputMode == "SAMPLER"){
-        if(fileIsImageExtension(currentList[selectedRow])){
+    else if(currentPage == "VIDEO"){
+        runningSource = "VIDEO";
+        if(fileIsImageExtension(menu_item)){
             isSampleImage = True;
-            img.load(currentList[selectedRow]);
+            img.load(menu_item);
         }
         else{
             isSampleImage = False;
-            playVideo(currentList[selectedRow]);
+            playVideo(menu_item);
         }
-        playingSampleRow = selectedRow;
-        sendIntMessage("/playingSampleRow", playingSampleRow);
-        playingMode = selectedInputMode;
-        playOn = true;
-        sendIntMessage("/playOn",1);
     } 
-    else if(selectedInputMode == "SHADERS"){
-        shaderPlayer.loadShaderFiles("default.vert", currentList[selectedRow]);
-        playingShaderRow = selectedRow;
-        sendIntMessage("/playingShaderRow", playingShaderRow);
-        playingMode = selectedInputMode;
-        playOn = true;
-        sendIntMessage("/playOn",1);
+    else if(currentPage == "PATTERN"){
+        runningSource = "PATTERN";
+        shaderPlayer.loadShaderFiles("default.vert", menu_item);
     }   
-    else if(selectedInputMode == "CAMERA"){
-        if(currentList[selectedRow] == "start"){
+    else if(currentPage == "EXTERNAL"){
+        runningSource = "EXTERNAL";
+        if(menu_item == "start"){
             videoInput.setup("vidGrabber", ofGetWidth(), ofGetHeight(), 25, 2);
-            isCameraOn = true;
-            sendIntMessage("/isCameraOn", 1);
-            // uncomment this to allow sample recording
-            //cameraList = {"record"};
-            //currentList = cameraList;
-            //sendListMessage("/cameraList", cameraList);
-            playingMode = selectedInputMode;
-            playOn = true;
         }
-        else if(currentList[selectedRow] == "record"){
-            videoInput.startRecording();
-            isCameraRecording = true;
-            cameraList = {"stop"};
-            currentList = cameraList;
-            sendListMessage("/cameraList", cameraList);
+        else if(menu_item == "stop"){
+            videoInput.close();
+            externalPage.isPlaying = false;
+            sendIntMessage("/IS_PLAYING/EXTERNAL", externalPage.isPlaying);
+
         }
-        else if(currentList[selectedRow] == "stop"){
-            videoInput.stopRecording();
-            cameraList = {"saving..."};
-            currentList = cameraList;
-            sendListMessage("/cameraList", cameraList);
+    }
+    else if(currentPage == "FONT"){
+        thisTextObject.loadFont(menu_item);
+        textPage.isPlaying = true;
+        sendBoolMessage("/PLAYING/TEXT",true);
+    }
+    else if(currentPage == "TEXT"){
+        if(menu_item == "LIVE"){
+            thisTextObject.text = "";
+            isLiveText = true;
+            userInput.isKeyPassthrough = true;
         }
+        else{
+            isLiveText = false;
+            userInput.isKeyPassthrough = false;
+            thisTextObject.loadText(menu_item);
+        }
+        
+        fontPage.isPlaying = true;
+        sendBoolMessage("/PLAYING/FONT",true);
+    }
+    else if(currentPage == "SETTING"){
+        updateSettings(menu_item);
+        settingPage.menuList = setting.generateMenuList();
+        sendMenuList("/LIST/SETTING", settingPage.menuList);
+        sendIntMessage("/PLAYING_ROW/SETTING", -1);
+        sendBoolMessage("/PLAYING/SETTING",false);
     }
 }
 
-void ofApp::switchInput(){
+void ofApp::switchSource(){
     // regenerate file lists again - incase something has changed
-    sampleList = getPathFromInternalAndExternal("SAMPLER"); //getPathsInFolder("/home/$
-    sendListMessage("/sampleList", sampleList);
-    shaderList = getPathFromInternalAndExternal("SHADERS"); // getPathsInFolder("/home$
-    sendListMessage("/shaderList", shaderList);
-    fxList = getPathFromInternalAndExternal("FX"); //getPathsInFolder("/home/pi/Fx/", $
-    sendListMessage("/fxList", fxList);
 
-    inputIndex = (inputIndex + 1) % inputModes.size() ;
-    selectedInputMode = inputModes[inputIndex];
+    videoPage.menuList = getPathsForMenu(videoPage); //getPathsInFolder("/home/pi/Videos/", "video");
+    sendMenuList("/LIST/VIDEO", videoPage.menuList);
+    patternPage.menuList = getPathsForMenu(patternPage); // getPathsInFolder("/home/pi/Shaders/", "shader");
+    sendMenuList("/LIST/PATTERN", patternPage.menuList);
+    effectPage.menuList = getPathsForMenu(effectPage);
+    sendMenuList("/LIST/EFFECT", effectPage.menuList);
+    textPage.menuList = getPathsForMenu(textPage);
+    sendMenuList("/LIST/TEXT", textPage.menuList);
+    fontPage.menuList = getPathsForMenu(fontPage);
+    sendMenuList("/LIST/FONT", fontPage.menuList);
 
-    sendStringMessage("/inputMode", selectedInputMode);
-    if(selectedInputMode == "SAMPLER"){
-        currentList = sampleList;
-        sendListMessage("/sampleList", sampleList);
+    currentSourceIndex = (currentSourceIndex + 1) % sourceModes.size() ;
+    currentPage = sourceModes[currentSourceIndex];
+    // currentPage = runningSource;
+
+    sendStringMessage("/CURRENT_PAGE", currentPage);
+    // check again if any midi devices are attached
+    userInput.midiListening(true);
+    // check if a keyboard is plugged in
+    userInput.connectKeyboard(0);
+    // check if external source is detected
+
+    if(isCameraDetected && !detectCamera()){
+       sourceModes.pop_back();
+       isCameraDetected = false;
+       // videoInput.close();
+       // externalPage.isPlaying = false;
+       // sendIntMessage("/IS_PLAYING/EXTERNAL", externalPage.isPlaying);
+        }
+    else if(!isCameraDetected && detectCamera()){
+        sourceModes.push_back("EXTERNAL");
+        isCameraDetected = true;
     }
-    else if(selectedInputMode == "SHADERS"){
-        currentList = shaderList;
-        sendListMessage("/shaderList", shaderList);
-    }
-    else if(selectedInputMode == "CAMERA"){
-        if(!isCameraOn){currentList = {"start"};}
-        //else{currentList = {"record"};}
-        
-    } 
-
-    selectedRow = 0;
-    sendIntMessage("/selectedRow", selectedRow);
 }
 
 void ofApp::closeUnusedInput(){
-    if(selectedInputMode != "SAMPLER"){
+    if(runningSource != "VIDEO"){
         recurPlayer.closeAll();
-        playingSampleRow = -1;
-        sendIntMessage("/playingSampleRow", playingSampleRow);
+        videoPage.playingRow = -1;
+        sendIntMessage("/PLAYING_ROW/VIDEO", videoPage.playingRow);
     }
-    else if(selectedInputMode != "CAMERA"){
+    else if(runningSource != "EXTERNAL"){
         videoInput.close();
-        isCameraOn = false;
-        cameraList = {"preview"};
-        sendListMessage("/cameraList", cameraList);
-        sendIntMessage("/isCameraOn", 0);
+        externalPage.isPlaying = false;
+        sendIntMessage("/IS_PLAYING/EXTERNAL", externalPage.isPlaying);
     }
-    else if(selectedInputMode != "SHADERS"){
-        playingShaderRow = -1;
-        sendIntMessage("/playingShaderRow", playingShaderRow);
+    else if(runningSource != "PATTERN"){
+        patternPage.playingRow = -1;
+        sendIntMessage("/PLAYING_ROW/PATTERN", patternPage.playingRow);
     }
+}
+
+void ofApp::liveTextKey(int key){
+    ofLog() << "this key press is: " << key;
+    if(key == 127){
+        // backspace was pressed
+        if(thisTextObject.text.size() > 0){
+            thisTextObject.text.pop_back();
+        }
+        
+    }
+    else if(key == 27){
+        // ESCAPE  was pressed leaving LIVE TEXT MODE
+        textPage.isPlaying = false;
+        fontPage.isPlaying = false;
+        sendBoolMessage("/PLAYING/TEXT",false);
+        sendBoolMessage("/PLAYING/FONT",false);
+
+        textPage.playingRow = -1;     
+        sendIntMessage("/PLAYING_ROW/TEXT", -1);
+        
+        isLiveText = false;
+        userInput.isKeyPassthrough = false;
+    }
+    else if(key == 80){
+        // F1 was pressed - save current text to file
+
+        std::string fileNameBase = thisTextObject.text.substr(0, 12);  // Get first 12 chars + "..."
+        // Replace spaces & special characters to make a safe filename
+        for (char& c : fileNameBase) {
+            if (c == ' ' || c == '/' || c == '\\' || c == ':') {
+                c = '_';  // Replace with underscores
+            }
+        }
+        std::string filepath = "/home/pi/TEXT/" + fileNameBase + ".txt";  
+        ofBuffer buffer;
+        buffer.set(thisTextObject.text);
+        ofBufferToFile(filepath, buffer);
+        thisTextObject.text = "";
+        // update list
+        textPage.menuList = getPathsForMenu(textPage);
+        sendMenuList("/LIST/TEXT", textPage.menuList);
+    }
+    else if(key >= 32 && key <= 126 || key == 10){
+        thisTextObject.text = thisTextObject.text + ofToString(static_cast<char>(key));
+    }
+    else{
+        ofLog() << "key press out of range";
+    }
+    
 }
 
 void ofApp::sendStringMessage(string address, string value){
@@ -439,6 +657,7 @@ void ofApp::sendStringMessage(string address, string value){
 }
 
 void ofApp::playVideo(string path){
+    fbo.allocate(ofGetScreenWidth(), ofGetScreenHeight(), GL_RGB);
     recurPlayer.startSingle(path);
 }
 
@@ -450,20 +669,87 @@ void ofApp::sendIntMessage(string address, int value){
     sender.sendMessage(response, true);
 }
 
-void ofApp::sendListMessage(string address, vector<string> list){
+void ofApp::sendBoolMessage(string address, bool value){
     ofxOscMessage response;
     response.setAddress(address);
-    for( int i = 0; i < list.size(); i++ ){
-        response.addStringArg(list[i]);    
-    }
-    //response.addStringArg(value);
+    response.addBoolArg(value);
 
     sender.sendMessage(response, true);
 }
 
+void ofApp::sendMenuList(string address, vector<string> list) {
+    // start by clearing the current list
+    sendBoolMessage("/CLEAR" + address, true);
+
+
+    const int OSC_MESSAGE_SIZE_LIMIT = 7500;
+    int estimatedSize = address.size() + 4;
+    ofxOscMessage response;
+    response.setAddress(address);
+
+    for (int i = 0; i < list.size(); i++) {
+        // Calculate the size of this string argument
+        int argSize = list[i].size() + 4; // Each argument has its size rounded up to a multiple of 4 bytes
+        estimatedSize += argSize;
+
+        // Check if adding this argument would exceed the limit
+        if (estimatedSize > OSC_MESSAGE_SIZE_LIMIT) {
+            // Send the current message
+            sender.sendMessage(response, true);
+
+            // Start a new message
+            response.clear();
+            response.setAddress(address);
+            estimatedSize = address.size() + 4 + argSize; // Reset estimated size for the new message
+
+            ofLogNotice() << "OSC message size limit reached. Sending current message and starting a new one.";
+        }
+
+        // Add the argument to the current message
+        response.addStringArg(list[i]);
+    }
+
+    // Send the final message if it contains any arguments
+    if (response.getNumArgs() > 0) {
+        sender.sendMessage(response, true);
+    }
+}
+
+// void ofApp::sendMenuList(string address, vector<string> list){
+//     ofxOscMessage response;
+//     response.setAddress(address);
+//     for( int i = 0; i < list.size(); i++ ){
+//         response.addStringArg(list[i]);    
+//     }
+//     //response.addStringArg(value);
+
+//     sender.sendMessage(response, true);
+// }
+
 bool alphabetical(string a, string b){return a<b;}
 
-vector<string> ofApp::getPathFromInternalAndExternal(string mode){
+vector<string> ofApp::getPathsForMenu(pageObject& thisObject){
+    vector<string> combinedPaths;
+    vector<string> folderPaths;
+    if(thisObject.currentFolder == "/"){
+        // this object needs combined root menu
+        folderPaths = getPathFromCombinedRootLocations(thisObject.name); 
+        combinedPaths.insert(combinedPaths.end(), folderPaths.begin(), folderPaths.end());
+    }
+    else{
+        // otherwise get objects in specific folder and append folder name at top:
+        folderPaths = getPathsInFolder(thisObject.currentFolder, thisObject.name);
+        combinedPaths.insert(combinedPaths.end(),folderPaths.begin(), folderPaths.end());
+        combinedPaths.insert(combinedPaths.begin(), thisObject.currentFolder + "^");  // Add item to front
+    }
+    if(thisObject.name == "TEXT"){
+        combinedPaths.insert(combinedPaths.begin(), "LIVE");
+    }
+    return combinedPaths;
+}
+
+vector<string> ofApp::getPathFromCombinedRootLocations(string source){
+
     // get a list of external devices
     vector<string> deviceList = {"/media/usb0"}; 
 //    ofDirectory dir("/media/usb0/");
@@ -474,21 +760,49 @@ vector<string> ofApp::getPathFromInternalAndExternal(string mode){
 //        deviceList.push_back(dir.getPath(i));  
 	   // }
     string sourcePath;
-    if(mode == "SAMPLER"){sourcePath = "/Videos/";}
-    else if(mode == "SHADERS"){sourcePath = "/Shaders/";}
-    else if(mode == "FX"){sourcePath = "/Fx/";}
+    string legacySourcePath = "";
+
+    if(source == "VIDEO"){
+        sourcePath = "/VIDEO/";
+        legacySourcePath = "/Videos/";
+        }
+    else if(source == "PATTERN"){
+        
+        sourcePath = "/PATTERN/";
+        legacySourcePath = "/Shaders/";
+        }
+    else if(source == "EFFECT"){
+        sourcePath = "/EFFECT/";
+        legacySourcePath = "/Fx/";
+        }
+    else if(source == "TEXT"){
+        sourcePath = "/TEXT/";
+        }
+    else if(source == "FONT"){
+        sourcePath = "/FONT/";
+        }
     else {sourcePath = "/";}
     vector<string> sourceList;
     // for each external device get the source files from it and add the sourceList
     if(deviceList.size() > 0){
         for(int i = 0; i < deviceList.size(); i++){
-            vector<string> theseFiles = getPathsInFolder(deviceList[i] + sourcePath, mode);
+            vector<string> theseFiles = getPathsInFolder(deviceList[i] + sourcePath, source);
             sourceList.insert(sourceList.end(), theseFiles.begin(), theseFiles.end());
+            // check both new folder names and old folder names
+            if(legacySourcePath != ""){
+                vector<string> theseFiles = getPathsInFolder(deviceList[i] + legacySourcePath, source);
+                sourceList.insert(sourceList.end(), theseFiles.begin(), theseFiles.end());
+            }
         }
     }
     // get the source files from the internal path
-    vector<string> internalFiles = getPathsInFolder("/home/pi" + sourcePath, mode);
+    vector<string> internalFiles = getPathsInFolder("/home/pi" + sourcePath, source);
     sourceList.insert(sourceList.end(), internalFiles.begin(), internalFiles.end());
+    // check both new folder names and old folder names
+    if(legacySourcePath != ""){
+        vector<string> internalFiles = getPathsInFolder("/home/pi" + legacySourcePath, source);
+        sourceList.insert(sourceList.end(), internalFiles.begin(), internalFiles.end());
+    }
     
     ofSort(sourceList, alphabetical);
 
@@ -502,32 +816,55 @@ vector<string> ofApp::getPathFromInternalAndExternal(string mode){
 
 vector<string> ofApp::getPathsInFolder(string folderPath, string mode){
     vector<string> thisList; 
+    vector<string> allowedExt;
     ofDirectory dir(folderPath);
 //	dir = dir.getSorted();
     
-    if(mode == "SAMPLER"){
+    if(mode == "VIDEO"){
 // video file types:
-        dir.allowExt("mp4");
-        dir.allowExt("mov");
-        dir.allowExt("avi");
-        dir.allowExt("mkv");
+        allowedExt.push_back("mp4");
+        allowedExt.push_back("mov");
+        allowedExt.push_back("avi");
+        allowedExt.push_back("mkv");
 // image file types:
-        dir.allowExt("png");
-        dir.allowExt("jpg");
-        dir.allowExt("jpeg");
-        dir.allowExt("gif");
-    } else if(mode == "SHADERS" || mode == "FX"){
-        dir.allowExt("frag");
-        dir.allowExt("glsl");
-        dir.allowExt("glslf");
-        dir.allowExt("fsh");
+        allowedExt.push_back("png");
+        allowedExt.push_back("jpg");
+        allowedExt.push_back("jpeg");
+        allowedExt.push_back("gif");
+    } else if(mode == "PATTERN" || mode == "EFFECT"){
+        allowedExt.push_back("frag");
+        allowedExt.push_back("glsl");
+        allowedExt.push_back("glslf");
+        allowedExt.push_back("fsh");
+    } else if(mode == "TEXT"){
+        allowedExt.push_back("txt");
+    } else if(mode == "FONT"){
+        allowedExt.push_back("ttf");
+        allowedExt.push_back("otf");
     }
-    dir.listDir();
+    if(dir.exists()){
+        dir.listDir();
 
-    for(int i = 0; i < dir.size(); i++){
-        thisList.push_back(dir.getPath(i));  
+        for(int i = 0; i < dir.size(); i++){
+            if (dir.getFile(i).isDirectory()) {
+                thisList.push_back(dir.getPath(i) + "|"); // Add directory
+            }
+            else {      
+                // Get the file's extension
+                std::string fileExtension = dir.getFile(i).getExtension();
+
+                // Check if the file's extension is in the allowed list
+                if (std::find(allowedExt.begin(), allowedExt.end(), fileExtension) != allowedExt.end()) {
+                    thisList.push_back(dir.getPath(i)); // Add the file if its extension is allowed
+                }
+            } 
+        }
+        return thisList;
     }
-    return thisList;
+    else{
+        return {};
+    }
+
 }
 
 bool ofApp::fileIsImageExtension(string path){
@@ -548,19 +885,16 @@ bool ofApp::detectCamera(){
     //return resp == "supported=1 detected=1\n";
 
     //this code is to detect usb capture devices
-    ofVideoGrabber vidGrabber;
-    vector<ofVideoDevice> devices = vidGrabber.listDevices();
+    try {
+        ofVideoGrabber vidGrabber;
+        vector<ofVideoDevice> devices = vidGrabber.listDevices();
     
-    return devices.size() > 2;
-}
-
-bool ofApp::diskspaceFull(){
-    string info = myExec("df -H /");
-    ofLog() << info;
-    int pos = info.find("% ", 40); // look past the % in heading
-    string capStr = info.substr(pos-3, pos-1);
-    int capInt = ofToInt(capStr);
-    return capInt > 98;
+        return devices.size() > 2;
+        }
+    catch (const std::exception& e) {
+        ofLogError() << "General exception caught: " << e.what();
+        return False;
+    }
 }
 
 string ofApp::myExec(char* cmd){
@@ -576,45 +910,208 @@ string ofApp::myExec(char* cmd){
     return result;
 }
 
-void ofApp::checkRecording(){
-    if(cameraList[0] == "saving..."){
-        if(videoInput.isRecordingFinished){
-            isCameraRecording = false;
-            ofLog() << "check recording says finished";
-            cameraList = {"record"};
-            currentList = cameraList;
-            sendListMessage("/cameraList", cameraList);
-            renameNewSample();
-            sampleList = getPathFromInternalAndExternal("SAMPLER");
-            sendListMessage("/sampleList", sampleList);
-        }    
+void ofApp::updateSettings(string settingLine){
+    vector<string> result = ofSplitString(settingLine, ":", false,true);
+    ofLog() << "result[0]: " << result[0] << " result[1]: " << result[1];
+    if(result[0] == "VIDEO_MODE"){
+        if(result[1] == "CVBS"){
+            showMessage("enable HDMI by rebooting \nwith HDMI cable attached");
+            ofSleepMillis(3000);
+            removeMessage();
+        }
+        else{
+            showMessage("enable CVBS by rebooting \nwithout HDMI cable attached");
+            ofSleepMillis(3000);
+            removeMessage();
+        }
     }
-    else if(diskspaceFull()){
-            videoInput.stopRecording();
-            cameraList = {"saving..."};
-            currentList = cameraList;
-            sendListMessage("/cameraList", cameraList);
+    else if(result[0] == "CVBS_TYPE"){
+        if(result[1] == "NTSC"){ setting.cvbsType = "PAL"; }
+        else{ setting.cvbsType = "NTSC"; }
+        persistVideoMode();
+
+        showMessage("enable new CVBS mode by\nrebooting without \nHDMI cable attached");
+        ofSleepMillis(3000);
+        removeMessage();
+
+       // if(setting.videoMode == "CVBS"){updateVideoMode();}
+    }
+    else if(result[0] == "HDMI_TYPE"){
+        if(result[1] == "480P"){ setting.hdmiType = "720P"; }
+        else{ setting.hdmiType = "480P"; }
+        persistVideoMode();
+        showMessage("enable new HDMI mode by\nrebooting with HDMI \ncable attached");
+        ofSleepMillis(3000);
+        removeMessage();
+
+       // if(setting.videoMode == "HDMI"){updateVideoMode();}
+    }
+    else if(result[0] == "CV_UPPER"){
+        if(result[1] == "5V"){ setting.cvUpper = "1V"; }
+        else{ setting.cvUpper = "5V"; }
+    }
+    else if(result[0] == "TEXT_ENABLE"){
+        if(result[1] == "true"){ setting.textEnable = false; }
+        else{ setting.textEnable = true; }
+    }
+    else if(result[0] == "CV_BUTTON"){
+        if(result[1] == "true"){ setting.cvButton = false; }
+        else{ setting.cvButton = true; }
+    }
+
+    else if(result[0] == "IMAGE_RATIO"){
+        if(result[1] == "ORIGINAL"){ setting.imageRatio = "STRETCH"; }
+        else{ setting.imageRatio = "ORIGINAL"; }
+    }
+    else if(result[0] == "SHOW_FPS"){
+        if(result[1] == "true"){ setting.showFps = false; }
+        else{ setting.showFps = true; }
+    }
+    else if(result[0] == "ADC_GRAIN"){
+        setting.advanceAdcGrain();
+        userInput.adcGrain = setting.adcGrain;
+    }
+    else if(result[0] == "PIXEL_OFFSET"){
+        if(result[1] == "true"){ setting.pixelOffset = false; }
+        else{ setting.pixelOffset = true; }
+        sendBoolMessage("/RESTART_DISPLAY",true);
+    }
+    else if(result[0] == "EJECT_USB"){
+        string mountPoint = "/media/usb0";
+        // Unmount the USB stick
+	std::string command = "sudo umount " + mountPoint;
+	std::vector<char> cmd(command.begin(), command.end());
+	cmd.push_back('\0'); // Ensure null termination
+	myExec(cmd.data());  // Pass mutable char* to myExec
+        
+        int unmountStatus = system("mountpoint -q /media/usb0 || echo 0");
+        if (unmountStatus == 0) {
+            showMessage("eject successful");
+            ofSleepMillis(3000);
+            removeMessage();
+        } else {
+            showMessage("eject failed");
+            ofSleepMillis(3000);
+            removeMessage();
+            }
+    }
+    else if(result[0] == "COPY_CONTENT"){
+        showMessage("copying please wait...");
+        int status = std::system("bash /home/pi/openframeworks10.1/apps/myApps/ofRecurBoy/copy_usb_to_internal.sh");
+        if (status == 0) {
+            showMessage("copy successful");
+        } else if (status == 256) { // Exit code 1 (Not enough space)
+            showMessage("not enough disk space");
+        } else if (status == 512) { // Exit code 2 (Copy error)
+            showMessage("error while copying");
+        }
+        ofSleepMillis(3000);
+        removeMessage();
+    }
+
+    else if(result[0] == "SHUTDOWN"){
+        showMessage("shutting down please wait...");
+        system("sudo shutdown -h now");
+    }
+    setting.saveJson();
+    
+}
+
+void ofApp::readVideoMode(){
+    string info = myExec("tvservice -s");
+
+    if (info.find("NTSC") != std::string::npos) {
+        setting.videoMode = "CVBS";
+        setting.cvbsType = "NTSC";
+    }
+    else if (info.find("PAL") != std::string::npos) {
+        setting.videoMode = "CVBS";
+        setting.cvbsType = "PAL";
+    }
+    else if (info.find("HDMI CEA (1)") != std::string::npos) {
+        setting.videoMode = "HDMI";
+        setting.hdmiType = "480P";
+    }
+    else if (info.find("HDMI CEA (4)") != std::string::npos) {
+        setting.videoMode = "HDMI";
+        setting.hdmiType = "720P";
+    }
+    // setting.saveJson();
+    // settingPage.menuList = setting.generateMenuList();
+    // sendMenuList("/LIST/SETTING", settingPage.menuList);
+
+}
+
+void ofApp::persistVideoMode(){
+    // making sure the hdmi_group mode is set correctly
+    myExec("sudo sed -i 's/^hdmi_group=.*/hdmi_group=1/' /boot/config.txt");
+    // persit type in config.txt
+    if(setting.hdmiType == "720P"){
+        myExec("sudo sed -i 's/^hdmi_mode=.*/hdmi_mode=4/' /boot/config.txt"); // set config.txt: hdmi_mode=4
+    }
+    else if(setting.hdmiType == "480P"){
+        myExec("sudo sed -i 's/^hdmi_mode=.*/hdmi_mode=1/' /boot/config.txt"); // set config.txt: hdmi_mode=1
+    }
+
+    if(setting.cvbsType == "NTSC"){
+        myExec("sudo sed -i 's/^sdtv_mode=.*/sdtv_mode=0/' /boot/config.txt"); // set config.txt: sdtv_mode=0
+    }
+    else if(setting.cvbsType == "PAL"){
+        myExec("sudo sed -i 's/^sdtv_mode=.*/sdtv_mode=2/' /boot/config.txt"); // set config.txt: sdtv_mode=2
     }
 }
 
-void ofApp::renameNewSample(){
-    string sampleBase = ofGetTimestampString("%F");
-    int count = 0;
-    string rawPath = "/home/pi/Videos/raw.mp4";
-    ofFile raw(rawPath, ofFile::ReadOnly);
-    ofLog() << "does raw.mp4 exist ? *****" << raw.exists();
-    if(raw.exists()){
-        string newPath = "";
-        while(true){
-            newPath = "/home/pi/Videos/rec-" + sampleBase + + "-" + ofToString(count) + ".mp4";
-            ofFile newFile(newPath);
-            ofLog() << "does " + newPath + " exist ??? " << newFile.exists() ;    
-            if(newFile.exists()){count++;}
-            else{break;}
-        }
-    //system("mv " + rawPath + " " + newPath);
-    raw.moveTo(newPath, false);       
-    }    
+void ofApp::updateVideoMode(){
+    showMessage("updading video mode...");
+    // set the mode for right now:
+    if(setting.videoMode == "HDMI" && setting.hdmiType == "720P"){
+        myExec("tvservice -e='CEA 4 HDMI'");
+    }
+    else if(setting.videoMode == "HDMI" && setting.hdmiType == "480P"){
+        myExec("tvservice -e='CEA 1 HDMI'");
+    }
+    else if(setting.videoMode == "CVBS" && setting.cvbsType == "NTSC"){
+        myExec("tvservice --sdtvon='NTSC 4:3'");
+    }
+    else if(setting.videoMode == "CVBS" && setting.cvbsType == "PAL"){
+        myExec("tvservice --sdtvon='PAL 4:3'");
+    }
+    else{
+        // dont update right now otherwise!
+        readVideoMode();
+        return;
+    }
+    //refresh the framebuffer
+    myExec("fbset -depth 16; fbset -depth 32");
+    // read and update the current mode
+    readVideoMode();
+    //ofSleepMillis(5000);
+    myExec("sh ~/openframeworks10.1/apps/myApps/ofRecurBoy/startRecurBoy");
+   // myExec("./startRecurBoy");
+    //ofExit();
+}
+
+void ofApp::showMessage(string message){
+    currentPage = "MESSAGE";
+    sendStringMessage("/CURRENT_PAGE", currentPage);
+
+    // Clear the existing menu list
+    messagePage.menuList = {};
+    // Split the message by '\n' and add each line to the menuList
+    stringstream ss(message);
+    string line;
+    while (getline(ss, line, '\n')) {
+        messagePage.menuList.push_back(line);
+    }
+
+    sendMenuList("/LIST/MESSAGE", messagePage.menuList);
+    sendIntMessage("/PLAYING_ROW/TEXT", -1);
+    sendIntMessage("/SELECTED_ROW/TEXT", 0);
+}
+
+void ofApp::removeMessage(){
+    currentPage = "SETTING";
+    sendStringMessage("/CURRENT_PAGE", currentPage);
 }
 
 void ofApp::printFramerate(){
@@ -631,6 +1128,9 @@ void ofApp::checkSafeShutdown(){
     if(timeDiff < 0.5){safeShutdownCount++;}
     else{safeShutdownCount = 0;}
     if(safeShutdownCount > 5){
+        showMessage("shutting down please wait...");
+        ofSleepMillis(2000);
+
         ofLog() << "do the shutdown now !!";
         system("sudo shutdown -h now");
     }
